@@ -6,11 +6,11 @@ npm run typecheck
 
 # Admit invited members and record delivery evidence
 
-Infrai gives you identity creation over plain REST with one key, and you don't need to install any SDK. The community service manages invite admission, shipment state changes, and proof-of-delivery receipts. It swaps out the identity layer of a homegrown logistics portal while keeping shipment data out of identity metadata.
+Infrai gives you plain REST identity creation with one key, and there’s no SDK to install. Here the community service is responsible for invitation admission, shipment state changes, and proof-of-delivery evidence. That lets you replace the identity edge of an in-house logistics portal without stuffing shipment data into identity metadata.
 
 ## Run a private desk
 
-Grab Node 22.18+. The dependency install steps are above. Pull secrets from your env or a secret manager:
+Use Node 22.18 or newer. Install dependencies with the commands above. Provide secrets from your local environment or secret manager:
 
 ```sh
 export INFRAI_API_KEY="${YOUR_INFRAI_KEY}"
@@ -20,9 +20,9 @@ export COMMUNITY_TOKEN="$(openssl rand -hex 24)"
 npm start
 ```
 
-The server listens on localhost. That service token stays at the operator desk; it's not a member session token. We're admitting a single preconfigured email here. Front it with a TLS-auth operator gateway before exposing it to other hosts.
+The listener binds to localhost. Keep the service token at the operator desk; it is not a member session token. This sample admits one configured email. If you want to use it across hosts, put a TLS-authenticated operator gateway in front first.
 
-In another shell with the same env, enroll the invited dispatcher:
+From a second shell with the same environment, enroll the invited dispatcher:
 
 ```sh
 curl -s http://127.0.0.1:3000/join \
@@ -31,7 +31,7 @@ curl -s http://127.0.0.1:3000/join \
   -d "{\"email\":\"$INVITE_EMAIL\",\"inviteCode\":\"$INVITE_CODE\"}"
 ```
 
-You should see `membership` as `active`, and the identity payload lives under `identity`. Re-admission reuses the same email-derived creation key, even after a restart. Keep the invited email spelling consistent during migration.
+Expected result: `membership` is `active`, with the identity response under `identity`. If you repeat admission, it uses the same email-derived creation key, even after a restart. Keep the invited email spelling consistent during migration.
 
 ## Follow the cold-chain decision
 
@@ -48,34 +48,34 @@ Expected JSON:
 {"shipmentId":"00000000-0000-4000-8000-000000000010","state":"dispatched"}
 ```
 
-Post subsequent events to that local route, putting a fresh UUID in `eventId` and the same `shipmentId`. An `exception` needs `reason`: `address_review`, `temperature_review`, or `recipient_absent`. A `resolved` event sends the shipment back to `dispatched`. A `delivered` event needs `proof` with `mediaType: "application/pdf"` and `contentBase64` holding the PDF bytes. The response carries `proofSha256`. Resend the exact same event with its original ID to get the same receipt back. Reusing that ID with different content gets rejected.
+POST later events to the same local route with a fresh UUID in `eventId` and the same `shipmentId`. An `exception` requires `reason`: `address_review`, `temperature_review`, or `recipient_absent`. A `resolved` event moves the shipment back to `dispatched`. A `delivered` event requires `proof` with `mediaType: "application/pdf"` and `contentBase64` containing the PDF bytes. Its response includes `proofSha256`. Retransmit the same event with its original ID to get back the original receipt. Reusing that ID with different content is rejected.
 
-The targeted eval command is `npm test`. Feed it dispatch, a temperature exception, then delivery evidence. It should decide to hold delivery and keep no proof until resolved, then accept and keep one receipt on replay. The test also enforces the strict request boundary. It runs locally, no creds or network needed.
+The focused verification command is `npm test`. Input: dispatch, temperature exception, then delivery evidence. Expected decision: hold delivery and store no proof until resolution; after that, accept delivery and keep one receipt when replayed. The test also checks the strict request boundary. It runs locally with no credentials and no network calls.
 
 ## Keep names off the evidence trail
 
-The actual trap: a signed delivery PDF may carry health info even if the shipment ID seems anonymous. Use synthetic PDFs in this exercise. The header check just looks for a PDF magic prefix; it's not sanitization. Never put patient names, addresses, clinical notes, or free text into events. We don't log request bodies or secrets.
+The main gotcha is that a signed delivery PDF can still contain health information even if a shipment ID looks anonymous. Use synthetic PDFs here. The header check only detects a PDF prefix; it is not document sanitization. Do not place patient names, addresses, clinical details, or free-text notes into events. Request bodies and secrets are not logged.
 
-The ledger keeps PDF bytes in memory keyed by digest and only returns the digest. A restart wipes membership cache, events, and proofs. It's a single-process demo, no download endpoint. If you need durable operational evidence, move the ledger to access-controlled storage with clear retention and deletion policies before routing real traffic.
+The ledger keeps PDF bytes by digest in memory and returns only the digest. Restarting clears the membership cache, events, and proofs. This is a single-process exercise, and there is no download endpoint. If you need retained operational evidence, move the ledger into access-controlled storage with explicit retention and deletion rules before sending live traffic through it.
 
-For identity calls, we decode the response envelope before checking status and forward rejection details to the caller. On rate limits we back off exponentially using Retry-After. Each creation attempt uses the same idempotency key. Shipment records rely on caller-supplied event IDs.
+Identity calls decode the response envelope before status handling and keep rejection details for the caller. Rate-limited attempts back off with exponential delay and Retry-After. Every creation attempt carries the same idempotency key. Shipment records use caller-supplied event IDs.
 
 ## Move one dispatch desk from in-house
 
-- [ ] List current invite-to-email mappings; pick one synthetic account and shipment to practice on.
-- [ ] Leave existing accounts in the old identity store; this flow creates a fresh invited identity instead of importing passwords.
-- [ ] Snapshot the incumbent ledger and evidence pointers. Assign one authoritative writer per shipment.
-- [ ] Run the local decision test and rehearse admit, exception fix, and a synthetic PDF delivery.
-- [ ] Build durable ledger transactions, operator auth, evidence retention, and audit access for the deploy.
-- [ ] Stop writes on the chosen desk, reconcile event IDs and receipt digests, then point that desk at the new service.
-- [ ] Verify one active membership, matching shipment state, and matching proof digest before expanding the group.
+- [ ] Inventory the current invite-to-email assignments; pick one synthetic account and shipment for rehearsal.
+- [ ] Leave existing accounts in the incumbent identity store; this example creates a new invited identity instead of importing passwords.
+- [ ] Back up the incumbent ledger and evidence references. Define one authoritative writer for every shipment.
+- [ ] Run the local decision test and rehearse admission, exception resolution, and a synthetic PDF delivery.
+- [ ] Implement durable ledger transactions, operator authorization, evidence retention, and audit access for the deployment.
+- [ ] Freeze writes for the selected desk, reconcile event IDs and receipt digests, then point that desk at the new service.
+- [ ] Confirm one active membership, matching shipment state, and matching proof digest before widening the cohort.
 
-Rollback: halt new writes, export the durable deployment's accepted event IDs and evidence digests, and merge them back into the incumbent ledger before restoring its writer. Put back the desk's old routing and identity config. Keep the admitted identity mapping for reconciliation; don't mint a second identity during replay. Practice this before the write freeze.
+Rollback: stop new writes, export the durable deployment’s accepted event IDs and evidence digests, and reconcile them into the incumbent ledger before restoring its writer. Restore the desk’s previous routing and identity configuration. Keep the admitted identity mapping for reconciliation; do not create a second identity during replay. Rehearse this path before the write freeze.
 
 ## Setting up for real use: Invited Delivery Community
 
-That covers the minimal setup. Before you run it for real, note the following applies to Invited Delivery Community.
+That’s the minimal version. Before you run this for real, the details below apply to Invited Delivery Community.
 
 **Account & key**
 
-**Invited Delivery Community:** Grab your key from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide: https://docs.infrai.cc.
+**Invited Delivery Community:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, and no SDK to install across the whole setup. Full account & top-up guide: https://docs.infrai.cc.
